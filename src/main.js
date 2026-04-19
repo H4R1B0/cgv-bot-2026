@@ -3,6 +3,7 @@ import * as api from './api.js';
 import { mountBanner, mountControlBar, setBadge, clearAllUi } from './ui.js';
 import { bell, blinkTitle, stopBlink } from './notify.js';
 import { createMonitor } from './monitor.js';
+import { enterPayment } from './payment.js';
 
 const STATE_KEY = '__cgvBot2026__';
 
@@ -69,10 +70,14 @@ function init() {
           const now = new Date().toTimeString().slice(0, 8);
           banner.set(`감시 중… 마지막 확인 ${now}`, 'ok');
         },
-        onHoldSuccess: (combo) => {
-          banner.set(`🔔 선점 완료! 결제하세요 (${combo.map(s => s.seatRowNm + s.seatNo).join(', ')})`, 'alert');
+        onHoldSuccess: (combo, result) => {
+          banner.set(`🔔 선점 완료! 결제 페이지로 이동 중… (${combo.map(s => s.seatRowNm + s.seatNo).join(', ')})`, 'alert');
           bell();
           blinkTitle();
+          setTimeout(() => {
+            try { enterPayment(ctx, combo, result); }
+            catch (e) { banner.set(`결제 페이지 이동 실패: ${e.message}`, 'warn'); }
+          }, 1500);
         },
         onError: (e, phase) => {
           console.warn('[cgv-bot]', phase, e);
