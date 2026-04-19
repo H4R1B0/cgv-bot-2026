@@ -77,7 +77,7 @@ function init() {
           blinkTitle();
           document.removeEventListener('pointerdown', onDocPointerDown, true);
           try {
-            await proceedToPayment(combo, { log: (m) => console.log('[cgv-bot]', m) });
+            await proceedToPayment(combo, { log: (m) => console.log('[cgv-bot]', m), count: n });
             banner.set(`✅ 선택완료/결제하기 진행됨 — 결제 페이지 확인`, 'ok');
           } catch (e) {
             banner.set(`자동 선택 실패: ${e.message} — 수동으로 진행하세요`, 'warn');
