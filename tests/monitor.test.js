@@ -5,7 +5,7 @@ describe('createMonitor', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('polls until combo found, then calls onHoldSuccess', async () => {
+  it('polls until combo found, then calls onAvailable', async () => {
     const ctx = { siteNo: '0113' };
     const pref = [{ row: 'I', num: 7, priority: 1 }, { row: 'I', num: 8, priority: 2 }];
     const avail1 = [];
@@ -15,17 +15,17 @@ describe('createMonitor', () => {
     ];
     const api = {
       getSeats: vi.fn().mockResolvedValueOnce(avail1).mockResolvedValueOnce(avail2),
-      holdSeats: vi.fn().mockResolvedValue({ paymNo: 'P', paymVrifyNo: 'V' }),
     };
-    const onHold = vi.fn();
+    const onAvailable = vi.fn();
     const onPoll = vi.fn();
-    const m = createMonitor({ api, ctx, preferred: pref, count: 2, interval: 1000, minInterval: 0, onHoldSuccess: onHold, onPoll });
+    const m = createMonitor({ api, ctx, preferred: pref, count: 2, interval: 1000, minInterval: 0, onAvailable, onPoll });
     m.start();
-    await vi.advanceTimersByTimeAsync(1); // first tick
+    await vi.advanceTimersByTimeAsync(1);
     await vi.advanceTimersByTimeAsync(1000);
     await Promise.resolve();
-    expect(api.holdSeats).toHaveBeenCalledTimes(1);
-    expect(onHold).toHaveBeenCalledTimes(1);
+    expect(onAvailable).toHaveBeenCalledTimes(1);
+    expect(onAvailable.mock.calls[0][0]).toHaveLength(2);
+    expect(m.isRunning()).toBe(false);
   });
 
   it('backs off on CGVAPIError but keeps polling', async () => {
@@ -34,13 +34,11 @@ describe('createMonitor', () => {
       getSeats: vi.fn()
         .mockRejectedValueOnce(new CGVAPIError('boom'))
         .mockResolvedValueOnce([]),
-      holdSeats: vi.fn(),
     };
-    const m = createMonitor({ api, ctx: {}, preferred: [], count: 1, interval: 1000, minInterval: 0, onHoldSuccess: () => {} });
+    const m = createMonitor({ api, ctx: {}, preferred: [], count: 1, interval: 1000, minInterval: 0, onAvailable: () => {} });
     m.start();
     await vi.advanceTimersByTimeAsync(1);
     await Promise.resolve(); await Promise.resolve();
-    // backoff = 2000ms
     await vi.advanceTimersByTimeAsync(2000);
     await Promise.resolve();
     expect(api.getSeats).toHaveBeenCalledTimes(2);
@@ -48,8 +46,8 @@ describe('createMonitor', () => {
   });
 
   it('stop() prevents further polling', async () => {
-    const api = { getSeats: vi.fn().mockResolvedValue([]), holdSeats: vi.fn() };
-    const m = createMonitor({ api, ctx: {}, preferred: [], count: 1, interval: 1000, minInterval: 0, onHoldSuccess: () => {} });
+    const api = { getSeats: vi.fn().mockResolvedValue([]) };
+    const m = createMonitor({ api, ctx: {}, preferred: [], count: 1, interval: 1000, minInterval: 0, onAvailable: () => {} });
     m.start();
     await vi.advanceTimersByTimeAsync(1);
     m.stop();

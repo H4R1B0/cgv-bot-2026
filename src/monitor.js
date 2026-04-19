@@ -2,7 +2,7 @@ import { findBestCombo } from './priority.js';
 
 const MAX_BACKOFF = 60000;
 
-export function createMonitor({ api, ctx, preferred, count, interval = 7000, minInterval = 5000, onHoldSuccess, onPoll, onError }) {
+export function createMonitor({ api, ctx, preferred, count, interval = 7000, minInterval = 5000, onAvailable, onPoll, onError }) {
   const iv = Math.max(minInterval, interval);
   let timer = null;
   let running = false;
@@ -15,14 +15,9 @@ export function createMonitor({ api, ctx, preferred, count, interval = 7000, min
       if (onPoll) onPoll(seats);
       const combo = findBestCombo(preferred, seats, count);
       if (combo) {
-        try {
-          const result = await api.holdSeats(ctx, combo);
-          running = false;
-          onHoldSuccess(combo, result);
-          return;
-        } catch (e) {
-          if (onError) onError(e, 'hold');
-        }
+        running = false;
+        try { onAvailable(combo, seats); } catch (e) { if (onError) onError(e, 'handler'); }
+        return;
       }
       currentBackoff = iv;
     } catch (e) {

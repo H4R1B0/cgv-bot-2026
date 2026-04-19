@@ -3,7 +3,7 @@ import * as api from './api.js';
 import { mountBanner, mountControlBar, setBadge, clearAllUi } from './ui.js';
 import { bell, blinkTitle, stopBlink } from './notify.js';
 import { createMonitor } from './monitor.js';
-import { enterPayment } from './payment.js';
+import { proceedToPayment } from './spa.js';
 
 const STATE_KEY = '__cgvBot2026__';
 
@@ -70,14 +70,18 @@ function init() {
           const now = new Date().toTimeString().slice(0, 8);
           banner.set(`감시 중… 마지막 확인 ${now}`, 'ok');
         },
-        onHoldSuccess: (combo, result) => {
-          banner.set(`🔔 선점 완료! 결제 페이지로 이동 중… (${combo.map(s => s.seatRowNm + s.seatNo).join(', ')})`, 'alert');
+        onAvailable: async (combo) => {
+          const label = combo.map(s => s.seatRowNm + s.seatNo).join(', ');
+          banner.set(`🔔 빈좌석 감지 (${label}) — 자동 선택 진행`, 'alert');
           bell();
           blinkTitle();
-          setTimeout(() => {
-            try { enterPayment(ctx, combo, result); }
-            catch (e) { banner.set(`결제 페이지 이동 실패: ${e.message}`, 'warn'); }
-          }, 1500);
+          document.removeEventListener('pointerdown', onDocPointerDown, true);
+          try {
+            await proceedToPayment(combo, { log: (m) => console.log('[cgv-bot]', m) });
+            banner.set(`✅ 선택완료/결제하기 진행됨 — 결제 페이지 확인`, 'ok');
+          } catch (e) {
+            banner.set(`자동 선택 실패: ${e.message} — 수동으로 진행하세요`, 'warn');
+          }
         },
         onError: (e, phase) => {
           console.warn('[cgv-bot]', phase, e);
