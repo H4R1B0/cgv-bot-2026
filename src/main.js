@@ -93,8 +93,7 @@ function init() {
     banner.set(`선택 ${preferred.length} / 필요 ${currentCount} — 선호 순으로 좌석 클릭`);
   }
 
-  function onSeatClick(e) {
-    const btn = e.currentTarget;
+  function togglePreferred(btn) {
     const { row, num } = seatMetaFromBtn(btn);
     if (!row || !num) return;
     const idx = preferred.findIndex(p => p.row === row && p.num === num);
@@ -107,13 +106,22 @@ function init() {
     renumber();
   }
 
-  for (const b of seatBtns) b.addEventListener('click', onSeatClick, true);
+  function onDocPointerDown(e) {
+    const btn = e.target.closest && e.target.closest('button[data-seatlocno]');
+    if (!btn) return;
+    // intercept: block CGV's own handler (which would reject disabled/occupied)
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    togglePreferred(btn);
+  }
+
+  document.addEventListener('pointerdown', onDocPointerDown, true);
   renumber();
 
   const teardown = () => {
     monitor?.stop();
     stopBlink();
-    for (const b of seatBtns) b.removeEventListener('click', onSeatClick, true);
+    document.removeEventListener('pointerdown', onDocPointerDown, true);
     clearAllUi();
     delete window[STATE_KEY];
   };
