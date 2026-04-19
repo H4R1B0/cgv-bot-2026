@@ -63,7 +63,20 @@ function findConfirmPayButton() {
 }
 
 function findSeatButton(seatLocNo) {
-  return document.querySelector(`button[data-seatlocno="${CSS.escape(seatLocNo)}"]`);
+  // 같은 data-seatlocno 가 미니맵(4×4) + 전체맵(46×46) 두 곳에 존재.
+  // 전체맵 버튼이 실제 클릭/예약 대상이므로 visible 한 것 중 가장 큰 것을 선택.
+  const matches = document.querySelectorAll(`button[data-seatlocno="${CSS.escape(seatLocNo)}"]`);
+  let best = null;
+  let bestArea = 0;
+  for (const el of matches) {
+    if (typeof el.checkVisibility === 'function'
+        && !el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const area = r.width * r.height;
+    if (area > bestArea) { best = el; bestArea = area; }
+  }
+  return best;
 }
 
 function findSeatMapModal() {
@@ -173,10 +186,11 @@ export async function proceedToPayment(combo, { log, count } = {}) {
 
   const firstLoc = combo[0].seatLocNo;
   say(`좌석 버튼 활성화 대기: ${firstLoc}`);
+  // 짧게 기다렸다 안 되면 바로 ↻ 새로고침으로 넘어감. 이미 활성화돼 있으면 waitFor 는 즉시 반환.
   let seatBtn = await waitFor(() => {
     const b = findSeatButton(firstLoc);
     return b && !b.disabled ? b : null;
-  }, { timeoutMs: 3000 });
+  }, { timeoutMs: 500, intervalMs: 50 });
 
   if (!seatBtn) {
     // 1차: CGV 자체 ↻ 새로고침 — 좌석맵 모달 유지, 인원만 자동 재선택
