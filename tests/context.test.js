@@ -8,37 +8,51 @@ function mockSession(data) {
   }
 }
 
-describe('readContext', () => {
-  beforeEach(() => window.sessionStorage.clear());
+function mockPerformance(urls) {
+  // jsdom performance.getEntriesByType returns [] by default; stub it
+  const entries = urls.map(name => ({ name }));
+  vi.stubGlobal('performance', {
+    getEntriesByType: () => entries,
+  });
+}
 
-  it('combines com/mov/movieGoers into context object', () => {
+// vi import for stubGlobal:
+import { vi, afterEach } from 'vitest';
+
+describe('readContext', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    vi.unstubAllGlobals?.();
+  });
+  afterEach(() => { vi.unstubAllGlobals?.(); });
+
+  it('reads from sessionStorage.query and extracts custNo from performance', () => {
     mockSession({
-      com: { siteNo: '0113', saleDt: '20260414' },
-      mov: {
-        scnYmd: '20260414', scnsNo: '001', scnSseq: '3',
-        custNo: '284236768', sachlTypCd: '01', prodBnduCd: 'X',
-        movNo: 'M1', movNm: '미키 17'
-      },
-      movieGoers: { 일반인원수: 2, 청소년인원수: 0, 경로인원수: 0, 우대인원수: 0 },
+      query: { siteNo: '0181', scnYmd: '20260422', scnsNo: '005', scnSseq: '3', movNo: '30000994', sachlTypCd: '01' },
     });
+    mockPerformance(['https://api.cgv.co.kr/foo?coCd=A420&custNo=284236768']);
     const ctx = readContext();
     expect(ctx).toMatchObject({
-      siteNo: '0113', scnYmd: '20260414', scnsNo: '001',
-      scnSseq: '3', custNo: '284236768', count: 2,
+      siteNo: '0181', scnYmd: '20260422', scnsNo: '005',
+      scnSseq: '3', movNo: '30000994', custNo: '284236768',
     });
   });
 
-  it('throws ContextError when mov is missing', () => {
-    mockSession({ com: { siteNo: '0113' } });
+  it('throws ContextError when query is missing', () => {
+    mockSession({});
+    mockPerformance([]);
     expect(() => readContext()).toThrow(ContextError);
   });
 
-  it('throws when count is 0', () => {
-    mockSession({
-      com: { siteNo: '0113' },
-      mov: { scnYmd: '20260414', scnsNo: '001', scnSseq: '3', custNo: '1' },
-      movieGoers: { 일반인원수: 0, 청소년인원수: 0, 경로인원수: 0, 우대인원수: 0 },
-    });
-    expect(() => readContext()).toThrow(/인원/);
+  it('throws when required field is missing in query', () => {
+    mockSession({ query: { siteNo: '0181' } });
+    mockPerformance(['https://api.cgv.co.kr/foo?custNo=1']);
+    expect(() => readContext()).toThrow(/scnYmd|scnsNo|scnSseq|movNo/);
+  });
+
+  it('throws when custNo cannot be extracted', () => {
+    mockSession({ query: { siteNo: '0181', scnYmd: '20260422', scnsNo: '005', scnSseq: '3', movNo: 'M' } });
+    mockPerformance(['https://api.cgv.co.kr/foo?coCd=A420']);
+    expect(() => readContext()).toThrow(/로그인/);
   });
 });

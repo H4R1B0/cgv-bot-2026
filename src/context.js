@@ -8,28 +8,40 @@ function parseJSON(key) {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
+function extractCustNo() {
+  try {
+    const resources = performance.getEntriesByType('resource');
+    for (const r of resources) {
+      const m = r.name && r.name.match(/[?&]custNo=(\d+)/);
+      if (m) return m[1];
+    }
+  } catch {}
+  return null;
+}
+
 export function readContext() {
-  const com = parseJSON('com');
-  const mov = parseJSON('mov');
-  const goers = parseJSON('movieGoers');
-  if (!mov) throw new ContextError('예매 컨텍스트(mov)가 없습니다. 예매 플로우 처음부터 다시 시작하세요.');
-  const siteNo = (com && com.siteNo) || mov.siteNo;
-  if (!siteNo) throw new ContextError('siteNo를 찾을 수 없습니다.');
-  const required = ['scnYmd', 'scnsNo', 'scnSseq', 'custNo'];
-  for (const k of required) {
-    if (!mov[k]) throw new ContextError(`${k} 누락 — 플로우를 다시 진행하세요.`);
+  const query = parseJSON('query');
+  if (!query) {
+    throw new ContextError('예매 컨텍스트가 없습니다. 영화/회차 선택을 다시 진행하세요.');
   }
-  const count = (goers?.일반인원수 ?? 0) + (goers?.청소년인원수 ?? 0)
-              + (goers?.경로인원수 ?? 0) + (goers?.우대인원수 ?? 0);
-  if (count <= 0) throw new ContextError('인원 선택 단계부터 다시 진행하세요.');
+  const required = ['siteNo', 'scnYmd', 'scnsNo', 'scnSseq', 'movNo'];
+  for (const k of required) {
+    if (!query[k]) throw new ContextError(`${k} 누락 — 영화/회차를 다시 선택하세요.`);
+  }
+
+  const custNo = extractCustNo();
+  if (!custNo) {
+    throw new ContextError('로그인 정보를 감지하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.');
+  }
+
   return {
-    siteNo,
-    scnYmd: mov.scnYmd,
-    scnsNo: mov.scnsNo,
-    scnSseq: mov.scnSseq,
-    custNo: String(mov.custNo),
-    sachlTypCd: mov.sachlTypCd || '01',
-    count,
-    raw: { com, mov, goers },
+    siteNo: String(query.siteNo),
+    scnYmd: String(query.scnYmd),
+    scnsNo: String(query.scnsNo),
+    scnSseq: String(query.scnSseq),
+    movNo: String(query.movNo),
+    custNo: String(custNo),
+    sachlTypCd: String(query.sachlTypCd || '01'),
+    raw: { query },
   };
 }

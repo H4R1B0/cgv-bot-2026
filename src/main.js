@@ -1,6 +1,6 @@
 import { readContext, ContextError } from './context.js';
 import * as api from './api.js';
-import { mountBanner, mountStartButton, setBadge, clearAllUi } from './ui.js';
+import { mountBanner, mountControlBar, setBadge, clearAllUi } from './ui.js';
 import { bell, blinkTitle, stopBlink } from './notify.js';
 import { createMonitor } from './monitor.js';
 
@@ -8,10 +8,7 @@ const STATE_KEY = '__cgvBot2026__';
 
 function pageGuard() {
   const okHost = /(^|\.)cgv\.co\.kr$/.test(location.hostname);
-  if (!okHost) {
-    alert('CGV.co.kr에서 실행하세요.');
-    return false;
-  }
+  if (!okHost) { alert('CGV.co.kr에서 실행하세요.'); return false; }
   return true;
 }
 
@@ -28,10 +25,7 @@ function seatMetaFromBtn(btn) {
 
 function init() {
   if (!pageGuard()) return;
-
-  if (window[STATE_KEY]) {
-    try { window[STATE_KEY].teardown(); } catch {}
-  }
+  if (window[STATE_KEY]) { try { window[STATE_KEY].teardown(); } catch {} }
 
   let ctx;
   try {
@@ -43,40 +37,60 @@ function init() {
     return;
   }
 
-  const banner = mountBanner(`선호 순으로 좌석을 클릭하세요 (필요 ${ctx.count}석)`);
-  const preferred = []; // {row, num, priority, el}
-  let monitor = null;
+  const seatBtns = collectSeatButtons();
+  if (seatBtns.length === 0) {
+    const b = mountBanner('좌석 버튼을 찾지 못했습니다. 좌석 선택 페이지에서 실행하세요.');
+    b.set('좌석 버튼을 찾지 못했습니다. 좌석 선택 페이지에서 실행하세요.', 'warn');
+    setTimeout(() => b.remove(), 6000);
+    return;
+  }
 
-  const startBtn = mountStartButton(() => {
-    if (preferred.length < ctx.count) return;
-    banner.set('감시 중… 좌석 열리는 즉시 선점합니다', 'ok');
-    monitor = createMonitor({
-      api,
-      ctx,
-      preferred: preferred.map(p => ({ row: p.row, num: p.num, priority: p.priority })),
-      count: ctx.count,
-      interval: 7000,
-      onPoll: () => {
-        const now = new Date().toTimeString().slice(0, 8);
-        banner.set(`감시 중… 마지막 확인 ${now}`, 'ok');
-      },
-      onHoldSuccess: (combo) => {
-        banner.set(`🔔 선점 완료! 결제하세요 (${combo.map(s => s.seatRowNm + s.seatNo).join(', ')})`, 'alert');
-        bell();
-        blinkTitle();
-      },
-      onError: (e, phase) => {
-        console.warn('[cgv-bot]', phase, e);
-        if (phase === 'poll') banner.set(`일시 오류: ${e.message} — 재시도 중`, 'warn');
-      },
-    });
-    monitor.start();
+  const banner = mountBanner('인원 수를 고르고 선호 순으로 좌석을 클릭하세요');
+  const preferred = [];
+  let monitor = null;
+  let currentCount = 2;
+
+  const ctrl = mountControlBar({
+    initialCount: 2,
+    onCountChange: (n) => {
+      currentCount = n;
+      updateBannerAndStart();
+    },
+    onStart: (n) => {
+      if (preferred.length < n) return;
+      banner.set('감시 중… 좌석 열리는 즉시 선점합니다', 'ok');
+      monitor = createMonitor({
+        api,
+        ctx,
+        preferred: preferred.map(p => ({ row: p.row, num: p.num, priority: p.priority })),
+        count: n,
+        interval: 7000,
+        onPoll: () => {
+          const now = new Date().toTimeString().slice(0, 8);
+          banner.set(`감시 중… 마지막 확인 ${now}`, 'ok');
+        },
+        onHoldSuccess: (combo) => {
+          banner.set(`🔔 선점 완료! 결제하세요 (${combo.map(s => s.seatRowNm + s.seatNo).join(', ')})`, 'alert');
+          bell();
+          blinkTitle();
+        },
+        onError: (e, phase) => {
+          console.warn('[cgv-bot]', phase, e);
+          if (phase === 'poll') banner.set(`일시 오류: ${e.message} — 재시도 중`, 'warn');
+        },
+      });
+      monitor.start();
+    },
   });
 
   function renumber() {
     preferred.forEach((p, i) => { p.priority = i + 1; setBadge(p.el, p.priority); });
-    startBtn.setEnabled(preferred.length >= ctx.count);
-    banner.set(`선택 ${preferred.length}/${ctx.count} — 추가 선택하거나 완료를 누르세요`);
+    updateBannerAndStart();
+  }
+
+  function updateBannerAndStart() {
+    ctrl.setEnabled(preferred.length >= currentCount);
+    banner.set(`선택 ${preferred.length} / 필요 ${currentCount} — 선호 순으로 좌석 클릭`);
   }
 
   function onSeatClick(e) {
@@ -93,13 +107,7 @@ function init() {
     renumber();
   }
 
-  const seatBtns = collectSeatButtons();
-  if (seatBtns.length === 0) {
-    banner.set('좌석 버튼을 찾지 못했습니다. 좌석 선택 페이지에서 실행하세요.', 'warn');
-    return;
-  }
   for (const b of seatBtns) b.addEventListener('click', onSeatClick, true);
-
   renumber();
 
   const teardown = () => {
@@ -109,7 +117,6 @@ function init() {
     clearAllUi();
     delete window[STATE_KEY];
   };
-
   window[STATE_KEY] = { teardown };
 }
 
