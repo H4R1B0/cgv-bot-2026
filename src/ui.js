@@ -10,8 +10,7 @@ function injectStyle() {
   style.id = STYLE_ID;
   style.textContent = `
     #${ID_BANNER} {
-      position: fixed; top: 0; left: 0; right: 0;
-      padding: 12px 16px; z-index: 2147483000;
+      width: 100%; padding: 12px 16px; box-sizing: border-box;
       background: #222; color: #fff; font: 14px/1.4 sans-serif;
       text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.25);
     }
@@ -63,8 +62,26 @@ function injectStyle() {
       background: #55f; color: #fff; font: bold 14px sans-serif; cursor: pointer;
     }
     .cgvbot-ctl-start:disabled { background: #aaa; cursor: not-allowed; }
+    .cgvbot-ctl-start.cgvbot-ctl-stop { background: #d33; }
+    .cgvbot-ctl-start.cgvbot-ctl-stop:hover { background: #c22; }
   `;
   document.head.appendChild(style);
+}
+
+function attachBannerToDOM(el) {
+  // 본문 컬럼(mainContentArea) 의 첫 자식으로 삽입 → 배너가 본문 위에 자연스럽게 자리잡음
+  const main = document.querySelector('[class*="mainContentArea"]');
+  if (main) {
+    main.insertBefore(el, main.firstChild);
+    return;
+  }
+  // fallback: body 의 첫 번째 div 앞
+  const firstDiv = document.body.querySelector(':scope > div');
+  if (firstDiv) {
+    document.body.insertBefore(el, firstDiv);
+  } else {
+    document.body.insertBefore(el, document.body.firstChild);
+  }
 }
 
 export function mountBanner(initialText) {
@@ -73,12 +90,14 @@ export function mountBanner(initialText) {
   if (!el) {
     el = document.createElement('div');
     el.id = ID_BANNER;
-    document.body.appendChild(el);
+    attachBannerToDOM(el);
   }
   el.textContent = initialText;
   el.className = '';
   return {
     set(text, level = 'info') {
+      // React 가 본문을 재렌더해서 배너가 떨어져나갔으면 다시 붙임
+      if (!document.contains(el)) attachBannerToDOM(el);
       el.textContent = text;
       el.className = level === 'ok' ? 'cgvbot-ok'
                    : level === 'warn' ? 'cgvbot-warn'
@@ -106,73 +125,131 @@ export function mountStartButton(onClick) {
   };
 }
 
-const badgeMap = new WeakMap(); // seatEl → badge element
-const badgeSeats = new Set();   // seatEls with active badges (for iteration)
+// 배지를 좌석 element 참조 대신 data-seatlocno 키로 추적 — React 가 좌석 노드를 갈아치워도 안 끊김.
+// 매 프레임 requestAnimationFrame 으로 위치 재계산 — 모달 스크롤/줌/transform/레이아웃 변동에도 따라옴.
+const badgeBySeatLoc = new Map(); // seatLocNo → badge element
 let overlayContainer = null;
-let repositionListenerAttached = false;
+let rafId = null;
 
 function ensureOverlay() {
   if (overlayContainer && document.body.contains(overlayContainer)) return overlayContainer;
   overlayContainer = document.createElement('div');
   overlayContainer.id = ID_OVERLAY;
   document.body.appendChild(overlayContainer);
-  if (!repositionListenerAttached) {
-    window.addEventListener('scroll', repositionAllBadges, true);
-    window.addEventListener('resize', repositionAllBadges);
-    repositionListenerAttached = true;
-  }
   return overlayContainer;
 }
 
-function positionBadge(seatEl, badge) {
-  const r = seatEl.getBoundingClientRect();
-  badge.style.left = (r.right - 14) + 'px';
-  badge.style.top = (r.top - 6) + 'px';
+// CGV 의 좌석맵 모달은 닫혀도 [role="dialog"] 가 DOM 에 남아있고
+// visibility:hidden 으로만 가려진다. offsetParent 체크는 visibility:hidden 을 못 잡으므로
+// checkVisibility() 로 확인 (visibility 와 opacity 도 함께 체크).
+// 같은 data-seatlocno 가 미니맵(작은) + 전체맵(큰) 둘 다 매치되면 더 큰 버튼을 우선.
+function isSeatVisible(el) {
+  if (typeof el.checkVisibility === 'function') {
+    return el.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  }
+  // fallback: 조상 체인에서 display:none / visibility:hidden / opacity:0 검사
+  let p = el;
+  while (p && p !== document.body) {
+    const cs = getComputedStyle(p);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+    p = p.parentElement;
+  }
+  return true;
+}
+
+function findVisibleSeatButton(seatLocNo) {
+  const matches = document.querySelectorAll(`[role="dialog"] button[data-seatlocno="${CSS.escape(seatLocNo)}"]`);
+  let best = null;
+  let bestArea = 0;
+  for (const el of matches) {
+    if (!isSeatVisible(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const area = r.width * r.height;
+    if (area > bestArea) { best = el; bestArea = area; }
+  }
+  return best;
 }
 
 function repositionAllBadges() {
-  for (const seatEl of badgeSeats) {
-    const badge = badgeMap.get(seatEl);
-    if (badge) positionBadge(seatEl, badge);
+  for (const [seatLocNo, badge] of badgeBySeatLoc) {
+    const seatEl = findVisibleSeatButton(seatLocNo);
+    if (!seatEl) {
+      badge.style.display = 'none';
+      continue;
+    }
+    const r = seatEl.getBoundingClientRect();
+    badge.style.display = '';
+    badge.style.left = (r.right - 14) + 'px';
+    badge.style.top = (r.top - 6) + 'px';
   }
 }
 
+function startBadgeRAF() {
+  if (rafId != null) return;
+  const tick = () => {
+    if (badgeBySeatLoc.size === 0) { rafId = null; return; }
+    repositionAllBadges();
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
+}
+
+function stopBadgeRAF() {
+  if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+}
+
+// 모달 닫기 버튼이 클릭되는 즉시 배지를 숨김 — rAF 대기(~16ms) 보다 빠른 0ms 응답.
+// CGV 가 닫기 시 fade-out 애니메이션을 두면 그동안 checkVisibility 가 true 라 배지가 잠깐 남는 걸 방지.
+let closeClickListenerAttached = false;
+function attachCloseClickListener() {
+  if (closeClickListenerAttached) return;
+  closeClickListenerAttached = true;
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('button, [role="button"]');
+    if (!btn) return;
+    if (!btn.closest('[role="dialog"]')) return;
+    const t = (btn.textContent || '').trim();
+    const meta = (btn.getAttribute('aria-label') || '') + ' ' +
+                 (btn.getAttribute('title') || '') + ' ' +
+                 (btn.className?.toString() || '');
+    const isClose = /^[xX×✕✖]$/.test(t) || /닫기|close/i.test(meta);
+    if (!isClose) return;
+    for (const badge of badgeBySeatLoc.values()) badge.style.display = 'none';
+  }, true);
+}
+
 export function setBadge(seatEl, priority) {
-  let badge = badgeMap.get(seatEl);
+  const seatLocNo = seatEl?.getAttribute?.('data-seatlocno');
+  if (!seatLocNo) return;
+  let badge = badgeBySeatLoc.get(seatLocNo);
   if (priority == null) {
-    if (badge) { badge.remove(); badgeMap.delete(seatEl); badgeSeats.delete(seatEl); }
+    if (badge) { badge.remove(); badgeBySeatLoc.delete(seatLocNo); }
+    if (badgeBySeatLoc.size === 0) stopBadgeRAF();
     return;
   }
   injectStyle();
   const container = ensureOverlay();
+  attachCloseClickListener();
   if (!badge) {
     badge = document.createElement('span');
     badge.className = 'cgvbot-badge';
     container.appendChild(badge);
-    badgeMap.set(seatEl, badge);
-    badgeSeats.add(seatEl);
+    badgeBySeatLoc.set(seatLocNo, badge);
   }
   badge.textContent = String(priority);
-  positionBadge(seatEl, badge);
+  startBadgeRAF();
 }
 
 export function clearAllBadges() {
-  for (const seatEl of badgeSeats) {
-    const badge = badgeMap.get(seatEl);
-    if (badge) badge.remove();
-    badgeMap.delete(seatEl);
-  }
-  badgeSeats.clear();
+  for (const badge of badgeBySeatLoc.values()) badge.remove();
+  badgeBySeatLoc.clear();
+  stopBadgeRAF();
   overlayContainer?.remove();
   overlayContainer = null;
-  if (repositionListenerAttached) {
-    window.removeEventListener('scroll', repositionAllBadges, true);
-    window.removeEventListener('resize', repositionAllBadges);
-    repositionListenerAttached = false;
-  }
 }
 
-export function mountControlBar({ initialCount = 2, onCountChange, onStart }) {
+export function mountControlBar({ initialCount = 2, onCountChange, onStart, onStop }) {
   injectStyle();
   let bar = document.getElementById(ID_CONTROLS);
   if (!bar) {
@@ -212,20 +289,52 @@ export function mountControlBar({ initialCount = 2, onCountChange, onStart }) {
   bar.appendChild(wrap);
 
   let count = initialCount;
+  let running = false;
+
   function render() {
     num.textContent = String(count);
-    minus.disabled = count <= 1;
-    plus.disabled = count >= 8;
+    minus.disabled = running || count <= 1;
+    plus.disabled = running || count >= 8;
   }
-  render();
 
-  minus.onclick = () => { if (count > 1) { count--; render(); onCountChange?.(count); } };
-  plus.onclick = () => { if (count < 8) { count++; render(); onCountChange?.(count); } };
-  start.onclick = () => { start.disabled = true; onStart?.(count); };
+  function renderStart() {
+    if (running) {
+      start.textContent = '중지';
+      start.classList.add('cgvbot-ctl-stop');
+      start.disabled = false; // 중지는 항상 누를 수 있음
+    } else {
+      start.textContent = '완료 (감시 시작)';
+      start.classList.remove('cgvbot-ctl-stop');
+    }
+  }
+
+  render();
+  renderStart();
+
+  minus.onclick = () => { if (!running && count > 1) { count--; render(); onCountChange?.(count); } };
+  plus.onclick = () => { if (!running && count < 8) { count++; render(); onCountChange?.(count); } };
+  start.onclick = () => {
+    if (running) {
+      running = false;
+      render();
+      renderStart();
+      onStop?.();
+    } else {
+      running = true;
+      render();
+      renderStart();
+      onStart?.(count);
+    }
+  };
 
   return {
     getCount() { return count; },
-    setEnabled(v) { start.disabled = !v; },
+    setEnabled(v) { if (!running) start.disabled = !v; },
+    setRunning(v) {
+      running = !!v;
+      render();
+      renderStart();
+    },
     remove() { bar.remove(); },
   };
 }

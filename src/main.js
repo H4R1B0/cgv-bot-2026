@@ -51,6 +51,19 @@ function init() {
   let monitor = null;
   let currentCount = 2;
 
+  // 좌석 선택 인터셉트 리스너 attach/detach (idempotent)
+  let seatPickerAttached = false;
+  function attachSeatPicker() {
+    if (seatPickerAttached) return;
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    seatPickerAttached = true;
+  }
+  function detachSeatPicker() {
+    if (!seatPickerAttached) return;
+    document.removeEventListener('pointerdown', onDocPointerDown, true);
+    seatPickerAttached = false;
+  }
+
   const ctrl = mountControlBar({
     initialCount: 2,
     onCountChange: (n) => {
@@ -59,6 +72,8 @@ function init() {
     },
     onStart: (n) => {
       if (preferred.length < n) return;
+      // 감시 시작 시 좌석 선택 비활성화 — 사용자 클릭이 봇 동작과 충돌하지 않게
+      detachSeatPicker();
       banner.set('감시 중… 좌석 열리는 즉시 선점합니다', 'ok');
       monitor = createMonitor({
         api,
@@ -75,12 +90,17 @@ function init() {
           banner.set(`🔔 빈좌석 감지 (${label}) — 자동 선택 진행`, 'alert');
           bell();
           blinkTitle();
-          document.removeEventListener('pointerdown', onDocPointerDown, true);
+          // 이미 detach 됐지만 안전하게 한번 더
+          detachSeatPicker();
           try {
             await proceedToPayment(combo, { log: (m) => console.log('[cgv-bot]', m), count: n });
             banner.set(`✅ 선택완료/결제하기 진행됨 — 결제 페이지 확인`, 'ok');
           } catch (e) {
             banner.set(`자동 선택 실패: ${e.message} — 수동으로 진행하세요`, 'warn');
+          } finally {
+            // 좌석 선점 시도 끝나면 컨트롤바 not-running, 좌석 선택 다시 활성화
+            ctrl.setRunning(false);
+            attachSeatPicker();
           }
         },
         onError: (e, phase) => {
@@ -89,6 +109,14 @@ function init() {
         },
       });
       monitor.start();
+    },
+    onStop: () => {
+      monitor?.stop();
+      monitor = null;
+      stopBlink();
+      // 감시 중지 → 좌석 선택 다시 활성화
+      attachSeatPicker();
+      banner.set(`감시 중지됨 — 인원/좌석 조정 후 다시 "완료" 클릭`);
     },
   });
 
@@ -124,13 +152,13 @@ function init() {
     togglePreferred(btn);
   }
 
-  document.addEventListener('pointerdown', onDocPointerDown, true);
+  attachSeatPicker();
   renumber();
 
   const teardown = () => {
     monitor?.stop();
     stopBlink();
-    document.removeEventListener('pointerdown', onDocPointerDown, true);
+    detachSeatPicker();
     clearAllUi();
     delete window[STATE_KEY];
   };
