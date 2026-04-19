@@ -1,8 +1,8 @@
 const ID_BANNER = 'cgvbot-banner';
 const ID_START = 'cgvbot-start';
 const ID_CONTROLS = 'cgvbot-controls';
-const BADGE_CLASS = 'cgvbot-badge';
 const STYLE_ID = 'cgvbot-style';
+const ID_OVERLAY = 'cgvbot-overlay';
 
 function injectStyle() {
   if (document.getElementById(STYLE_ID)) return;
@@ -27,12 +27,20 @@ function injectStyle() {
       cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.3);
     }
     #${ID_START}:disabled { background: #aaa; cursor: not-allowed; }
-    .${BADGE_CLASS} {
-      position: absolute; top: 2px; right: 2px;
-      width: 20px; height: 20px; border-radius: 50%;
+    #${ID_OVERLAY} {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 2147483000;
+    }
+    #${ID_OVERLAY} .cgvbot-badge {
+      position: fixed;
+      width: 22px; height: 22px;
+      border-radius: 50%;
       background: #55f; color: #fff;
-      font: bold 12px/20px sans-serif; text-align: center;
-      pointer-events: none; z-index: 10;
+      font: bold 12px/22px sans-serif;
+      text-align: center;
+      box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,.3);
+      pointer-events: none;
     }
     #${ID_CONTROLS} {
       position: fixed; bottom: 20px; left: 50%;
@@ -98,20 +106,70 @@ export function mountStartButton(onClick) {
   };
 }
 
+const badgeMap = new WeakMap(); // seatEl → badge element
+const badgeSeats = new Set();   // seatEls with active badges (for iteration)
+let overlayContainer = null;
+let repositionListenerAttached = false;
+
+function ensureOverlay() {
+  if (overlayContainer && document.body.contains(overlayContainer)) return overlayContainer;
+  overlayContainer = document.createElement('div');
+  overlayContainer.id = ID_OVERLAY;
+  document.body.appendChild(overlayContainer);
+  if (!repositionListenerAttached) {
+    window.addEventListener('scroll', repositionAllBadges, true);
+    window.addEventListener('resize', repositionAllBadges);
+    repositionListenerAttached = true;
+  }
+  return overlayContainer;
+}
+
+function positionBadge(seatEl, badge) {
+  const r = seatEl.getBoundingClientRect();
+  badge.style.left = (r.right - 14) + 'px';
+  badge.style.top = (r.top - 6) + 'px';
+}
+
+function repositionAllBadges() {
+  for (const seatEl of badgeSeats) {
+    const badge = badgeMap.get(seatEl);
+    if (badge) positionBadge(seatEl, badge);
+  }
+}
+
 export function setBadge(seatEl, priority) {
-  let badge = seatEl.querySelector(`.${BADGE_CLASS}`);
+  let badge = badgeMap.get(seatEl);
   if (priority == null) {
-    if (badge) badge.remove();
+    if (badge) { badge.remove(); badgeMap.delete(seatEl); badgeSeats.delete(seatEl); }
     return;
   }
+  injectStyle();
+  const container = ensureOverlay();
   if (!badge) {
     badge = document.createElement('span');
-    badge.className = BADGE_CLASS;
-    const cs = getComputedStyle(seatEl);
-    if (cs.position === 'static') seatEl.style.position = 'relative';
-    seatEl.appendChild(badge);
+    badge.className = 'cgvbot-badge';
+    container.appendChild(badge);
+    badgeMap.set(seatEl, badge);
+    badgeSeats.add(seatEl);
   }
   badge.textContent = String(priority);
+  positionBadge(seatEl, badge);
+}
+
+export function clearAllBadges() {
+  for (const seatEl of badgeSeats) {
+    const badge = badgeMap.get(seatEl);
+    if (badge) badge.remove();
+    badgeMap.delete(seatEl);
+  }
+  badgeSeats.clear();
+  overlayContainer?.remove();
+  overlayContainer = null;
+  if (repositionListenerAttached) {
+    window.removeEventListener('scroll', repositionAllBadges, true);
+    window.removeEventListener('resize', repositionAllBadges);
+    repositionListenerAttached = false;
+  }
 }
 
 export function mountControlBar({ initialCount = 2, onCountChange, onStart }) {
@@ -176,5 +234,5 @@ export function clearAllUi() {
   document.getElementById(ID_BANNER)?.remove();
   document.getElementById(ID_START)?.remove();
   document.getElementById(ID_CONTROLS)?.remove();
-  document.querySelectorAll(`.${BADGE_CLASS}`).forEach(b => b.remove());
+  clearAllBadges();
 }
