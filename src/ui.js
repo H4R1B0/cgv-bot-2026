@@ -160,7 +160,6 @@ export function mountControlBar({ initialCount = 2, onCountChange, onStart }) {
     plus.disabled = count >= 8;
   }
   render();
-  onCountChange?.(count);
 
   minus.onclick = () => { if (count > 1) { count--; render(); onCountChange?.(count); } };
   plus.onclick = () => { if (count < 8) { count++; render(); onCountChange?.(count); } };
