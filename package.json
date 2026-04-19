@@ -1,0 +1,26 @@
+{
+  "name": "cgv-bot-2026",
+  "version": "0.1.0",
+  "description": "Bookmarklet for auto-booking seats on renewed CGV.co.kr",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "deploy": "npm run build && gh-pages -d dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0",
+    "gh-pages": "^6.1.1",
+    "vitest": "^1.6.0",
+    "jsdom": "^24.0.0"
+  },
+  "author": "H4R1B0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/H4R1B0/cgv-bot-2026.git"
+  },
+  "homepage": "https://github.com/H4R1B0/cgv-bot-2026#readme"
+}
