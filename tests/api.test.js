@@ -12,7 +12,7 @@ describe('getSeats', () => {
   it('GETs searchIfSeatData with correct params and returns data array', async () => {
     global.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ statusCode: 0, data: [{ seatRowNm: 'I', seatNo: '7', seatLocNo: '00100100210017', sbordNo: '001', seatAreaNo: '001', szoneNo: '01001', seatSttsCd: '00' }] }),
+      json: async () => ({ statusCode: 0, data: { items: [{ seats: [{ seatRowNm: 'I', seatNo: '7', seatLocNo: '00100100210017', sbordNo: '001', seatAreaNo: '001', szoneNo: '01001', seatStusCd: '00' }] }] } }),
     });
     const seats = await getSeats(baseCtx);
     expect(seats.length).toBe(1);
@@ -42,7 +42,7 @@ describe('holdSeats', () => {
       ok: true,
       json: async () => ({ statusCode: 0, data: { paymNo: 'P1', paymVrifyNo: 'V1' } }),
     });
-    const seat = { seatRowNm: 'I', seatNo: '7', seatLocNo: 'L', sbordNo: 'B', seatAreaNo: 'A', szoneNo: 'Z', seatSttsCd: '00' };
+    const seat = { seatRowNm: 'I', seatNo: '7', seatLocNo: 'L', sbordNo: 'B', seatAreaNo: 'A', szoneNo: 'Z', seatStusCd: '00' };
     const res = await holdSeats(baseCtx, [seat]);
     expect(res.paymNo).toBe('P1');
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);

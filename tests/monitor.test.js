@@ -10,8 +10,8 @@ describe('createMonitor', () => {
     const pref = [{ row: 'I', num: 7, priority: 1 }, { row: 'I', num: 8, priority: 2 }];
     const avail1 = [];
     const avail2 = [
-      { seatRowNm: 'I', seatNo: '7', seatLocNo: '0010010021' + '0000', sbordNo: '001', seatAreaNo: '001', szoneNo: '01001', seatSttsCd: '00' },
-      { seatRowNm: 'I', seatNo: '8', seatLocNo: '0010010022' + '0000', sbordNo: '001', seatAreaNo: '001', szoneNo: '01001', seatSttsCd: '00' },
+      { seatRowNm: 'I', seatNo: '7', seatLocNo: '0010010021' + '0000', sbordNo: '001', seatAreaNo: '001', szoneNo: '01001', seatStusCd: '00' },
+      { seatRowNm: 'I', seatNo: '8', seatLocNo: '0010010022' + '0000', sbordNo: '001', seatAreaNo: '001', szoneNo: '01001', seatStusCd: '00' },
     ];
     const api = {
       getSeats: vi.fn().mockResolvedValueOnce(avail1).mockResolvedValueOnce(avail2),

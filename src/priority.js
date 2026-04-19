@@ -20,7 +20,7 @@ export function findBestCombo(preferred, available, count) {
   if (count <= 0) return null;
   const availMap = new Map();
   for (const s of available) {
-    if (s.seatSttsCd === '00') availMap.set(`${s.seatRowNm}${parseInt(s.seatNo, 10)}`, s);
+    if (s.seatStusCd === '00') availMap.set(`${s.seatRowNm}${parseInt(s.seatNo, 10)}`, s);
   }
 
   const prefAvail = [];

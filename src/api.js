@@ -83,7 +83,7 @@ async function request(path, { method = 'GET', query, body } = {}) {
 }
 
 export async function getSeats(ctx) {
-  return await request('/cnm/atkt/searchIfSeatData', {
+  const data = await request('/cnm/atkt/searchIfSeatData', {
     query: {
       coCd: CO_CD,
       siteNo: ctx.siteNo,
@@ -95,6 +95,12 @@ export async function getSeats(ctx) {
       custNo: ctx.custNo,
     },
   });
+  const items = (data && Array.isArray(data.items)) ? data.items : [];
+  const seats = [];
+  for (const item of items) {
+    if (Array.isArray(item.seats)) seats.push(...item.seats);
+  }
+  return seats;
 }
 
 export async function holdSeats(ctx, seats) {

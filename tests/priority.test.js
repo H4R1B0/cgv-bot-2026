@@ -5,7 +5,7 @@ const seat = (row, num, locX, stts = '00') => ({
   seatRowNm: row, seatNo: String(num),
   seatLocNo: '001001' + String(locX).padStart(4, '0') + '0000',
   sbordNo: '001', seatAreaNo: '001', szoneNo: '01001',
-  seatSttsCd: stts,
+  seatStusCd: stts,
 });
 
 describe('parseX', () => {
@@ -68,7 +68,7 @@ describe('findBestCombo', () => {
     expect(combo.map(s => s.seatRowNm)).toEqual(['A', 'A']);
   });
 
-  it('ignores unavailable seats (seatSttsCd != 00)', () => {
+  it('ignores unavailable seats (seatStusCd != 00)', () => {
     const pref = [
       { row: 'I', num: 7, priority: 1 },
       { row: 'I', num: 8, priority: 2 },
